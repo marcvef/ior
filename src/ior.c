@@ -35,6 +35,7 @@
 #include "utilities.h"
 #include "parse_options.h"
 
+#define _NO_MPI_TIMER
 
 /* globals used by other files, also defined "extern" in ior.h */
 int      numTasksWorld = 0;

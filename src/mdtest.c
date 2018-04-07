@@ -79,6 +79,7 @@
 #define RELEASE_VERS "1.9.3"
 #define TEST_DIR "#test-dir"
 #define ITEM_COUNT 25000
+#define _NO_MPI_TIMER
 
 typedef struct
 {
@@ -198,6 +199,28 @@ static char *print_timestamp() {
     return datestring;
 }
 
+/*
+ * Get time stamp.  Use MPI_Timer() unless _NO_MPI_TIMER is defined,
+ * in which case use gettimeofday().
+ * Copy pasta from IOR code
+ */
+static double GetTimeStamp(void)
+{
+        double timeVal;
+#ifdef _NO_MPI_TIMER
+        struct timeval timer;
+
+        if (gettimeofday(&timer, (struct timezone *)NULL) != 0)
+                FAIL("cannot use gettimeofday()");
+        timeVal = (double)timer.tv_sec + ((double)timer.tv_usec / 1000000);
+#else                           /* not _NO_MPI_TIMER */
+        timeVal = MPI_Wtime();  /* no MPI_CHECK(), just check return value */
+        if (timeVal < 0)
+                FAIL("cannot use MPI_Wtime()");
+#endif                          /* _NO_MPI_TIMER */
+        return (timeVal);
+}
+
 #if MPI_VERSION >= 3
 int count_tasks_per_node(void) {
     /* modern MPI provides a simple way to get the local process count */
@@ -276,7 +299,7 @@ void offset_timers(double * t, int tcount) {
         fflush( stdout );
     }
 
-    toffset = MPI_Wtime() - t[tcount];
+    toffset = GetTimeStamp() - t[tcount];
     for (i = 0; i < tcount+1; i++) {
         t[i] += toffset;
     }
@@ -929,7 +952,7 @@ void directory_test(const int iteration, const int ntasks, const char *path) {
     }
 
     MPI_Barrier(testComm);
-    t[0] = MPI_Wtime();
+    t[0] = GetTimeStamp();
 
     /* create phase */
     if(create_only) {
@@ -961,7 +984,7 @@ void directory_test(const int iteration, const int ntasks, const char *path) {
     if (barriers) {
         MPI_Barrier(testComm);
     }
-    t[1] = MPI_Wtime();
+    t[1] = GetTimeStamp();
 
     /* stat phase */
     if (stat_only) {
@@ -990,7 +1013,7 @@ void directory_test(const int iteration, const int ntasks, const char *path) {
     if (barriers) {
         MPI_Barrier(testComm);
     }
-    t[2] = MPI_Wtime();
+    t[2] = GetTimeStamp();
 
     /* read phase */
     if (read_only) {
@@ -1019,7 +1042,7 @@ void directory_test(const int iteration, const int ntasks, const char *path) {
     if (barriers) {
         MPI_Barrier(testComm);
     }
-    t[3] = MPI_Wtime();
+    t[3] = GetTimeStamp();
 
     if (remove_only) {
         if (unique_dir_per_task) {
@@ -1049,7 +1072,7 @@ void directory_test(const int iteration, const int ntasks, const char *path) {
     if (barriers) {
         MPI_Barrier(testComm);
     }
-    t[4] = MPI_Wtime();
+    t[4] = GetTimeStamp();
 
     if (remove_only) {
         if (unique_dir_per_task) {
@@ -1118,7 +1141,7 @@ void file_test(const int iteration, const int ntasks, const char *path) {
     }
 
     MPI_Barrier(testComm);
-    t[0] = MPI_Wtime();
+    t[0] = GetTimeStamp();
 
     /* create phase */
     if (create_only) {
@@ -1151,7 +1174,7 @@ void file_test(const int iteration, const int ntasks, const char *path) {
     if (barriers) {
         MPI_Barrier(testComm);
     }
-    t[1] = MPI_Wtime();
+    t[1] = GetTimeStamp();
 
     /* stat phase */
     if (stat_only) {
@@ -1180,7 +1203,7 @@ void file_test(const int iteration, const int ntasks, const char *path) {
     if (barriers) {
         MPI_Barrier(testComm);
     }
-    t[2] = MPI_Wtime();
+    t[2] = GetTimeStamp();
 
     /* read phase */
     if (read_only) {
@@ -1209,7 +1232,7 @@ void file_test(const int iteration, const int ntasks, const char *path) {
     if (barriers) {
         MPI_Barrier(testComm);
     }
-    t[3] = MPI_Wtime();
+    t[3] = GetTimeStamp();
 
     if (remove_only) {
         if (unique_dir_per_task) {
@@ -1238,7 +1261,7 @@ void file_test(const int iteration, const int ntasks, const char *path) {
     if (barriers) {
         MPI_Barrier(testComm);
     }
-    t[4] = MPI_Wtime();
+    t[4] = GetTimeStamp();
 
     if (remove_only) {
         if (unique_dir_per_task) {
@@ -2186,7 +2209,7 @@ int main(int argc, char **argv) {
             /* create hierarchical directory structure */
             MPI_Barrier(MPI_COMM_WORLD);
             if (create_only) {
-                startCreate = MPI_Wtime();
+                startCreate = GetTimeStamp();
                 if (unique_dir_per_task) {
                     if (collective_creates && (rank == 0)) {
                         /*
@@ -2240,7 +2263,7 @@ int main(int argc, char **argv) {
                     }
                 }
                 MPI_Barrier(MPI_COMM_WORLD);
-                endCreate = MPI_Wtime();
+                endCreate = GetTimeStamp();
                 summary_table[j].entry[8] =
                     num_dirs_in_tree / (endCreate - startCreate);
                 if (verbose >= 1 && rank == 0) {
@@ -2316,7 +2339,7 @@ int main(int argc, char **argv) {
 
             MPI_Barrier(MPI_COMM_WORLD);
             if (remove_only) {
-                startCreate = MPI_Wtime();
+                startCreate = GetTimeStamp();
                 if (unique_dir_per_task) {
                     if (collective_creates && (rank == 0)) {
                         /*
@@ -2371,7 +2394,7 @@ int main(int argc, char **argv) {
                 }
 
                 MPI_Barrier(MPI_COMM_WORLD);
-                endCreate = MPI_Wtime();
+                endCreate = GetTimeStamp();
                 summary_table[j].entry[9] = num_dirs_in_tree
                     / (endCreate - startCreate);
                 if (verbose >= 1 && rank == 0) {
