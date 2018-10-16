@@ -1,6 +1,5 @@
-This repo now contains both IOR and mdtest.
-
-[See also NOTES.txt]
+Install
+=======
 
 Building
 --------

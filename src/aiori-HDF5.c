@@ -89,22 +89,29 @@ static IOR_offset_t HDF5_Xfer(int, void *, IOR_size_t *,
                            IOR_offset_t, IOR_param_t *);
 static void HDF5_Close(void *, IOR_param_t *);
 static void HDF5_Delete(char *, IOR_param_t *);
-static void HDF5_SetVersion(IOR_param_t *);
+static char* HDF5_GetVersion();
 static void HDF5_Fsync(void *, IOR_param_t *);
 static IOR_offset_t HDF5_GetFileSize(IOR_param_t *, MPI_Comm, char *);
+static int HDF5_Access(const char *, int, IOR_param_t *);
 
 /************************** D E C L A R A T I O N S ***************************/
 
 ior_aiori_t hdf5_aiori = {
         .name = "HDF5",
+        .name_legacy = NULL,
         .create = HDF5_Create,
         .open = HDF5_Open,
         .xfer = HDF5_Xfer,
         .close = HDF5_Close,
         .delete = HDF5_Delete,
-        .set_version = HDF5_SetVersion,
+        .get_version = HDF5_GetVersion,
         .fsync = HDF5_Fsync,
         .get_file_size = HDF5_GetFileSize,
+        .statfs = aiori_posix_statfs,
+        .mkdir = aiori_posix_mkdir,
+        .rmdir = aiori_posix_rmdir,
+        .access = HDF5_Access,
+        .stat = aiori_posix_stat,
 };
 
 static hid_t xferPropList;      /* xfer property list */
@@ -222,6 +229,17 @@ static void *HDF5_Open(char *testFileName, IOR_param_t * param)
                                     param->setAlignment),
                    "cannot set alignment");
 
+#ifdef HAVE_H5PSET_ALL_COLL_METADATA_OPS
+        if (param->collective_md) {
+                /* more scalable metadata */
+
+                HDF5_CHECK(H5Pset_all_coll_metadata_ops(accessPropList, 1),
+                        "cannot set collective md read");
+                HDF5_CHECK(H5Pset_coll_metadata_write(accessPropList, 1),
+                        "cannot set collective md write");
+        }
+#endif
+
         /* open file */
         if (param->open == WRITE) {     /* WRITE */
                 *fd = H5Fcreate(testFileName, fd_mode,
@@ -254,6 +272,8 @@ static void *HDF5_Open(char *testFileName, IOR_param_t * param)
                                 HDF5_CHECK(H5Fget_vfd_handle
                                            (*fd, apl, (void **)&fd_mpiio),
                                            "cannot get MPIIO file handle");
+                                if (mpiHintsCheck != MPI_INFO_NULL)
+                                        MPI_Info_free(&mpiHintsCheck);
                                 MPI_CHECK(MPI_File_get_info
                                           (*fd_mpiio, &mpiHintsCheck),
                                           "cannot get info object through MPIIO");
@@ -261,6 +281,8 @@ static void *HDF5_Open(char *testFileName, IOR_param_t * param)
                                         "\nhints returned from opened file (MPIIO) {\n");
                                 ShowHints(&mpiHintsCheck);
                                 fprintf(stdout, "}\n");
+                                if (mpiHintsCheck != MPI_INFO_NULL)
+                                        MPI_Info_free(&mpiHintsCheck);
                         }
                 }
                 MPI_CHECK(MPI_Barrier(testComm), "barrier error");
@@ -322,6 +344,8 @@ static void *HDF5_Open(char *testFileName, IOR_param_t * param)
            and shape of data set, and open it for access */
         dataSpace = H5Screate_simple(NUM_DIMS, dataSetDims, NULL);
         HDF5_CHECK(dataSpace, "cannot create simple data space");
+        if (mpiHints != MPI_INFO_NULL)
+                MPI_Info_free(&mpiHints);
 
         return (fd);
 }
@@ -435,27 +459,29 @@ static void HDF5_Close(void *fd, IOR_param_t * param)
  */
 static void HDF5_Delete(char *testFileName, IOR_param_t * param)
 {
-        if (unlink(testFileName) != 0)
-                WARN("cannot delete file");
+        return(MPIIO_Delete(testFileName, param));
 }
 
 /*
  * Determine api version.
  */
-static void HDF5_SetVersion(IOR_param_t * test)
+static char * HDF5_GetVersion()
 {
+  static char version[1024] = {0};
+  if(version[0]) return version;
+
         unsigned major, minor, release;
         if (H5get_libversion(&major, &minor, &release) < 0) {
                 WARN("cannot get HDF5 library version");
         } else {
-                sprintf(test->apiVersion, "%s-%u.%u.%u",
-                        test->api, major, minor, release);
+                sprintf(version, "%u.%u.%u", major, minor, release);
         }
 #ifndef H5_HAVE_PARALLEL
-        strcat(test->apiVersion, " (Serial)");
+        strcat(version, " (Serial)");
 #else                           /* H5_HAVE_PARALLEL */
-        strcat(test->apiVersion, " (Parallel)");
+        strcat(version, " (Parallel)");
 #endif                          /* not H5_HAVE_PARALLEL */
+  return version;
 }
 
 /*
@@ -565,5 +591,13 @@ static void SetupDataSet(void *fd, IOR_param_t * param)
 static IOR_offset_t
 HDF5_GetFileSize(IOR_param_t * test, MPI_Comm testComm, char *testFileName)
 {
-        return (MPIIO_GetFileSize(test, testComm, testFileName));
+        return(MPIIO_GetFileSize(test, testComm, testFileName));
+}
+
+/*
+ * Use MPIIO call to check for access.
+ */
+static int HDF5_Access(const char *path, int mode, IOR_param_t *param)
+{
+        return(MPIIO_Access(path, mode, param));
 }

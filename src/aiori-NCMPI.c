@@ -53,22 +53,29 @@ static IOR_offset_t NCMPI_Xfer(int, void *, IOR_size_t *,
                                IOR_offset_t, IOR_param_t *);
 static void NCMPI_Close(void *, IOR_param_t *);
 static void NCMPI_Delete(char *, IOR_param_t *);
-static void NCMPI_SetVersion(IOR_param_t *);
+static char *NCMPI_GetVersion();
 static void NCMPI_Fsync(void *, IOR_param_t *);
 static IOR_offset_t NCMPI_GetFileSize(IOR_param_t *, MPI_Comm, char *);
+static int NCMPI_Access(const char *, int, IOR_param_t *);
 
 /************************** D E C L A R A T I O N S ***************************/
 
 ior_aiori_t ncmpi_aiori = {
         .name = "NCMPI",
+        .name_legacy = NULL,
         .create = NCMPI_Create,
         .open = NCMPI_Open,
         .xfer = NCMPI_Xfer,
         .close = NCMPI_Close,
         .delete = NCMPI_Delete,
-        .set_version = NCMPI_SetVersion,
+        .get_version = NCMPI_GetVersion,
         .fsync = NCMPI_Fsync,
         .get_file_size = NCMPI_GetFileSize,
+        .statfs = aiori_posix_statfs,
+        .mkdir = aiori_posix_mkdir,
+        .rmdir = aiori_posix_rmdir,
+        .access = NCMPI_Access,
+        .stat = aiori_posix_stat,
 };
 
 /***************************** F U N C T I O N S ******************************/
@@ -169,7 +176,7 @@ static void *NCMPI_Open(char *testFileName, IOR_param_t * param)
 static IOR_offset_t NCMPI_Xfer(int access, void *fd, IOR_size_t * buffer,
                                IOR_offset_t length, IOR_param_t * param)
 {
-        char *bufferPtr = (char *)buffer;
+        signed char *bufferPtr = (signed char *)buffer;
         static int firstReadCheck = FALSE, startDataSet;
         int var_id, dim_id[NUM_DIMS];
         MPI_Offset bufSize[NUM_DIMS], offset[NUM_DIMS];
@@ -329,16 +336,15 @@ static void NCMPI_Close(void *fd, IOR_param_t * param)
  */
 static void NCMPI_Delete(char *testFileName, IOR_param_t * param)
 {
-        if (unlink(testFileName) != 0)
-                WARN("unlink() failed");
+        return(MPIIO_Delete(testFileName, param));
 }
 
 /*
  * Determine api version.
  */
-static void NCMPI_SetVersion(IOR_param_t * test)
+static char* NCMPI_GetVersion()
 {
-        sprintf(test->apiVersion, "%s (%s)", test->api, ncmpi_inq_libvers());
+  return (char *)ncmpi_inq_libvers();
 }
 
 /*
@@ -387,5 +393,13 @@ static int GetFileMode(IOR_param_t * param)
 static IOR_offset_t NCMPI_GetFileSize(IOR_param_t * test, MPI_Comm testComm,
                                       char *testFileName)
 {
-        return (MPIIO_GetFileSize(test, testComm, testFileName));
+        return(MPIIO_GetFileSize(test, testComm, testFileName));
+}
+
+/*
+ * Use MPIIO call to check for access.
+ */
+static int NCMPI_Access(const char *path, int mode, IOR_param_t *param)
+{
+        return(MPIIO_Access(path, mode, param));
 }

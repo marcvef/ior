@@ -15,7 +15,8 @@ AC_CONFIG_HEADER([src/config.h])
 AC_CANONICAL_HOST
 
 # Automake support
-AM_INIT_AUTOMAKE([check-news dist-bzip2 gnu no-define])
+AM_INIT_AUTOMAKE([check-news dist-bzip2 gnu no-define foreign subdir-objects])
+m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 AM_MAINTAINER_MODE
 
 # Checks for programs
@@ -25,6 +26,7 @@ AX_PROG_CC_MPI(,,[
     AC_MSG_FAILURE([MPI compiler requested, but couldn't use MPI.])
 ])
 
+AC_PROG_RANLIB
 # No reason not to require modern C at this point
 AC_PROG_CC_C99
 
@@ -69,11 +71,22 @@ AC_ARG_WITH([lustre],
                 [support configurable Lustre striping values @<:@default=check@:>@])],
         [], [with_lustre=check])
 AS_IF([test "x$with_lustre" != xno], [
-        AC_CHECK_HEADERS([lustre/lustre_user.h], [], [
+        AC_CHECK_HEADERS([linux/lustre/lustre_user.h lustre/lustre_user.h], break, [
                 if test "x$with_lustre" != xcheck; then
                         AC_MSG_FAILURE([--with-lustre was given, <lustre/lustre_user.h> not found])
                 fi
         ])
+])
+
+# IME (DDN's Infinite Memory Engine) support
+AC_ARG_WITH([ime],
+        [AS_HELP_STRING([--with-ime],
+           [support IO with IME backend @<:@default=no@:>@])],
+        [],
+        [with_ime=no])
+AM_CONDITIONAL([USE_IME_AIORI], [test x$with_ime = xyes])
+AM_COND_IF([USE_IME_AIORI],[
+        AC_DEFINE([USE_IME_AIORI], [], [Build IME backend AIORI])
 ])
 
 # HDF5 support
@@ -85,7 +98,11 @@ AC_ARG_WITH([hdf5],
 AM_CONDITIONAL([USE_HDF5_AIORI], [test x$with_hdf5 = xyes])
 AM_COND_IF([USE_HDF5_AIORI],[
         AC_DEFINE([USE_HDF5_AIORI], [], [Build HDF5 backend AIORI])
+	AC_SEARCH_LIBS([H5Pset_all_coll_metadata_ops], [hdf5])
+	AC_CHECK_FUNCS([H5Pset_all_coll_metadata_ops])
 ])
+
+
 
 # HDFS support
 AC_ARG_WITH([hdfs],
@@ -120,6 +137,17 @@ AM_COND_IF([USE_NCMPI_AIORI],[
         AC_DEFINE([USE_NCMPI_AIORI], [], [Build NCMPI backend AIORI])
 ])
 
+# MMAP IO support
+AC_ARG_WITH([mmap],
+        [AS_HELP_STRING([--with-mmap],
+           [support IO with MMAP backend @<:@default=yes@:>@])],
+        [],
+        [with_mmap=yes])
+AM_CONDITIONAL([USE_MMAP_AIORI], [test x$with_mmap = xyes])
+AM_COND_IF([USE_MMAP_AIORI],[
+        AC_DEFINE([USE_MMAP_AIORI], [], [Build MMAP backend AIORI])
+])
+
 # POSIX IO support
 AC_ARG_WITH([posix],
         [AS_HELP_STRING([--with-posix],
@@ -131,6 +159,16 @@ AM_COND_IF([USE_POSIX_AIORI],[
         AC_DEFINE([USE_POSIX_AIORI], [], [Build POSIX backend AIORI])
 ])
 
+# RADOS support
+AC_ARG_WITH([rados],
+        [AS_HELP_STRING([--with-rados],
+           [support IO with librados backend @<:@default=no@:>@])],
+        [],
+        [with_rados=no])
+AM_CONDITIONAL([USE_RADOS_AIORI], [test x$with_rados = xyes])
+AM_COND_IF([USE_RADOS_AIORI],[
+        AC_DEFINE([USE_RADOS_AIORI], [], [Build RADOS backend AIORI])
+])
 
 
 
